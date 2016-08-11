@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>three.js webgl - materials - cube refraction [balls]</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+    <style>
+      body {
+        background:#000;
+        padding:0;
+        margin:0;
+        font-weight: bold;
+        overflow:hidden;
+      }
+      #info {
+        position: absolute;
+        top: 0px; width: 100%;
+        color: #ffffff;
+        padding: 5px;
+        font-family:Monospace;
+        font-size:13px;
+        text-align:center;
+        z-index:1000;
+      }
+      a {
+        color: #ffffff;
+      }
+      #oldie a { color:#da0 }
+    </style>
+  </head>
+
+    <script src="https://cdn.socket.io/socket.io-1.4.5.js"></script>
+
+  <body>
+    <div id="info">Realtime indoor climate visualization</div>
+
+    <!-- Load libraries -->
+    <script type="text/javascript" src="../libs/three.js"></script>
+    <script type="text/javascript" src="../libs/perlin.js"></script>
+
+    <!-- Load helper classes -->
+    <script type="text/javascript" src="../helper/EffectComposer.js"></script>
+    <script type="text/javascript" src="../helper/RenderPass.js"></script>
+    <script type="text/javascript" src="../helper/ShaderPass.js"></script>
+    <script type="text/javascript" src="../helper/Detector.js"></script>
+    <script type="text/javascript" src="../helper/Fire.js"></script>
+    <script type="text/javascript" src="../helper/FireShader.js"></script>
+    
+    <!-- Load customized scripts -->
+    <script src="TestShader.js"></script>
+    <script type="text/javascript" src="../helper/FireShader.js"></script>
+
+    <script>
+    
+      if ( ! Detector.webgl ) Detector.addGetWebGLMessage();
+      var container;
+      var camera, scene, renderer;
+      var mesh, lightMesh, geometry;
+      var spheres = [];
+      var directionalLight, pointLight;
+      var mouseX = 0, mouseY = 0;
+      var frameCount = 0;
+      var windowHalfX = window.innerWidth / 2;
+      var windowHalfY = window.innerHeight / 2;
+      var testPass, testParams;
+      var composer;
+      var fire;
+
+      document.addEventListener( 'mousemove', onDocumentMouseMove, false );
+      init();
+      animate();
+
+      function init() {
+
+        container = document.createElement( 'div' );
+        document.body.appendChild( container );
+
+        camera = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 1, 100000 );
+        camera.position.z = 3200;
+
+        scene = new THREE.Scene();
+        scene.background = new THREE.CubeTextureLoader()
+          .setPath( 'textures/' )
+          .load( [ 'px.jpg', 'nx.jpg', 'py.jpg', 'ny.jpg', 'pz.jpg', 'nz.jpg' ] );
+
+        var geometry = new THREE.SphereBufferGeometry( 100, 32, 16 );
+
+        var textureCube = new THREE.CubeTextureLoader()
+          .setPath( 'textures/' )
+          .load( [ 'px.jpg', 'nx.jpg', 'py.jpg', 'ny.jpg', 'pz.jpg', 'nz.jpg' ] );
+
+        textureCube.mapping = THREE.CubeRefractionMapping;
+
+        var material = new THREE.MeshBasicMaterial( { color: 0xffffff, envMap: textureCube, refractionRatio: 0.9 } );
+
+        for ( var i = 0; i < 200; i ++ ) {
+
+          var mesh = new THREE.Mesh( geometry, material );
+          mesh.position.x = Math.random() * 10000 - 5000;
+          mesh.position.y = Math.random() * 10000 - 5000;
+          mesh.position.z = Math.random() * 10000 - 5000;
+
+          mesh.scale.x = mesh.scale.y = mesh.scale.z = Math.random() * 3 + 1;
+          scene.add( mesh );
+          spheres.push( mesh );
+        }
+        
+        // addFire();
+
+
+        renderer = new THREE.WebGLRenderer({
+                alpha: true,
+                antialias: true
+            });
+        renderer.setClearColor(0x000000);
+        renderer.setPixelRatio( window.devicePixelRatio );
+        renderer.setSize( window.innerWidth, window.innerHeight );
+        container.appendChild( renderer.domElement );
+
+
+        window.addEventListener( 'resize', onWindowResize, false );
+
+        //POST PROCESSING
+        //Create Effects Composer
+        composer = new THREE.EffectComposer(renderer);
+
+        //Create Shader Passes
+        var renderPass = new THREE.RenderPass( scene, camera );
+        testPass = new THREE.ShaderPass( THREE.TestShader );
+
+        //Add Shader Passes to Composer - order is important
+        composer.addPass( renderPass );
+        composer.addPass( testPass );
+
+        //set last pass in composer chain to renderToScreen
+        testPass.renderToScreen = true;
+
+        onLightChange(200);
+      }
+
+      function addFire() {
+        var fireTex = new THREE.TextureLoader().load("/textures/firetexture.png");
+        
+        var wireframeMat = new THREE.MeshBasicMaterial({
+            color : new THREE.Color(0xffffff),
+            wireframe : true
+        });
+
+        fire = new THREE.Fire(fireTex);
+
+        var wireframe = new THREE.Mesh(fire.geometry, wireframeMat.clone());
+        fire.add(wireframe);
+        wireframe.visible = true;
+
+        fire.scale.x = fire.scale.y = fire.scale.z = 5;
+        fire.position.y = -5;
+
+        scene.add(fire);
+
+        // fire.material.uniforms.magnitude.value = controller.magnitude;
+        // fire.material.uniforms.lacunarity.value = controller.lacunarity;
+        // fire.material.uniforms.gain.value = controller.gain;
+        // fire.material.uniforms.noiseScale.value = new THREE.Vector4(
+        //     controller.noiseScaleX,
+        //     controller.noiseScaleY,
+        //     controller.noiseScaleZ,
+        //     0.3
+        // );
+      }
+
+      function onWindowResize() {
+        windowHalfX = window.innerWidth / 2,
+        windowHalfY = window.innerHeight / 2,
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize( window.innerWidth, window.innerHeight );
+      }
+
+      function onDocumentMouseMove(event) {
+        mouseX = ( event.clientX - windowHalfX ) *10;
+        mouseY = ( event.clientY - windowHalfY ) *10;
+      }
+
+      function animate() {
+        requestAnimationFrame( animate );
+        render();
+        // fire.update(frameCount);
+        frameCount = frameCount+1;
+      }
+
+      function render() {
+        var timer = 0.0001 * Date.now();
+
+        for ( var i = 0, il = spheres.length; i < il; i ++ ) {
+
+          var sphere = spheres[ i ];
+          sphere.position.x = 5000 * Math.cos((timer + i));
+          sphere.position.y = 5000 * Math.sin((timer + i * 1.1));
+
+          // sphere.position.x = fire.position.x;
+          // sphere.position.y = fire.position.y;
+
+          // sphere.position.x += noise.simplex3(frameCount*i, frameCount*i, 100)*30;
+          // sphere.position.y += noise.simplex3(frameCount*20*i, frameCount, 20)*30;
+
+          sphere.position.x += Math.random()*20;
+          sphere.position.y += Math.random()*20;
+        }
+        camera.position.x += ( mouseX - camera.position.x ) * .05;
+        camera.position.y += ( - mouseY - camera.position.y ) * .05;
+        camera.lookAt( scene.position );
+        renderer.render( scene, camera );
+        composer.render();
+      }
+
+      function onLightChange(value) {
+
+        var brightness = value / 300 * 1.5;
+
+        //copy gui params into shader uniforms
+        testPass.uniforms["amount"].value = brightness;
+      }
+
+      // Register socket
+      var socket = io(window.location.origin); 
+      socket.emit("registered", {});
+
+      socket.on('updateLight', function (data) {
+          console.log(data);
+          onLightChange(data);
+      });
+    </script>
+
+  </body>
+</html>

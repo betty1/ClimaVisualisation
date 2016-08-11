@@ -1,0 +1,29 @@
+{
+  "name": "basic-websockets",
+  "version": "0.0.1",
+  "private": true,
+  "description": "",
+  "main": "src/server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node_modules/nodemon/bin/nodemon.js --watch src src/server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
+  "author": "",
+  "license": "",
+  "bugs": {
+    "url": ""
+  },
+  "homepage": "",
+  "devDependencies": {
+    "nodemon": "^1.9.1"
+  },
+  "dependencies": {
+    "node-uuid": "^1.4.7",
+    "restify": "^4.1.0",
+    "socket.io": "^1.4.5"
+  }
+}
