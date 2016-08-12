@@ -1,0 +1,24 @@
+body {
+    background: #000;
+    padding: 0;
+    margin: 0;
+    font-weight: bold;
+    overflow: hidden;
+}
+
+#info {
+    background: #333;
+    position: absolute;
+    top: 0px;
+    width: 400px;
+    color: #ffffff;
+    padding: 5px;
+    font-family: Arial;
+    font-size: 20px;
+    text-align: left;
+    z-index: 1000;
+}
+
+a {
+    color: #ffffff;
+}

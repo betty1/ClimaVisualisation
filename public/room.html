@@ -1,235 +1,358 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <title>three.js webgl - materials - cube refraction [balls]</title>
+<head>
+    <title>Realtime climate visualization - Generative Gestaltung Projekt 2016</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
-    <style>
-      body {
-        background:#000;
-        padding:0;
-        margin:0;
-        font-weight: bold;
-        overflow:hidden;
-      }
-      #info {
-        position: absolute;
-        top: 0px; width: 100%;
-        color: #ffffff;
-        padding: 5px;
-        font-family:Monospace;
-        font-size:13px;
-        text-align:center;
-        z-index:1000;
-      }
-      a {
-        color: #ffffff;
-      }
-      #oldie a { color:#da0 }
-    </style>
-  </head>
+    <link href="css/custom_style.css" rel="stylesheet">
+</head>
 
-    <script src="https://cdn.socket.io/socket.io-1.4.5.js"></script>
+<body>
+<div id="info">Realtime climate visualization</div>
 
-  <body>
-    <div id="info">Realtime indoor climate visualization</div>
+<!-- Load libraries -->
+<script src="https://cdn.socket.io/socket.io-1.4.5.js"></script>
+<script type="text/javascript" src="../libs/three.js"></script>
+<script type="text/javascript" src="../libs/perlin.js"></script>
+<script type="text/javascript" src="../libs/dat.gui.min.js"></script>
 
-    <!-- Load libraries -->
-    <script type="text/javascript" src="../libs/three.js"></script>
-    <script type="text/javascript" src="../libs/perlin.js"></script>
+<!-- Load helper classes -->
+<script type="text/javascript" src="../helper/EffectComposer.js"></script>
+<script type="text/javascript" src="../helper/RenderPass.js"></script>
+<script type="text/javascript" src="../helper/ShaderPass.js"></script>
+<script type="text/javascript" src="../helper/Detector.js"></script>
 
-    <!-- Load helper classes -->
-    <script type="text/javascript" src="../helper/EffectComposer.js"></script>
-    <script type="text/javascript" src="../helper/RenderPass.js"></script>
-    <script type="text/javascript" src="../helper/ShaderPass.js"></script>
-    <script type="text/javascript" src="../helper/Detector.js"></script>
-    <script type="text/javascript" src="../helper/Fire.js"></script>
-    <script type="text/javascript" src="../helper/FireShader.js"></script>
-    
-    <!-- Load customized scripts -->
-    <script src="TestShader.js"></script>
-    <script type="text/javascript" src="../helper/FireShader.js"></script>
+<!-- Load customized scripts -->
+<script src="LightTemperatureShader.js"></script>
 
-    <script>
-    
-      if ( ! Detector.webgl ) Detector.addGetWebGLMessage();
-      var container;
-      var camera, scene, renderer;
-      var mesh, lightMesh, geometry;
-      var spheres = [];
-      var directionalLight, pointLight;
-      var mouseX = 0, mouseY = 0;
-      var frameCount = 0;
-      var windowHalfX = window.innerWidth / 2;
-      var windowHalfY = window.innerHeight / 2;
-      var testPass, testParams;
-      var composer;
-      var fire;
+<script>
 
-      document.addEventListener( 'mousemove', onDocumentMouseMove, false );
-      init();
-      animate();
+    if (!Detector.webgl) Detector.addGetWebGLMessage();
 
-      function init() {
+    var container;
+    var camera, scene, renderer;
+    var bubbles = [];
+    var bubbleGrowingTime = 80;
+    var mouseX = 0, mouseY = 0;
+    var frameCount = 0;
+    var windowHalfX = window.innerWidth / 2;
+    var windowHalfY = window.innerHeight / 2;
+    var shaderPass;
+    var composer;
+    var bubbleGeometry, bubbleMaterial;
+    var jitterFactor = 1;
 
-        container = document.createElement( 'div' );
-        document.body.appendChild( container );
+    // Sensor calibration
+    var humidMin = 50;
+    var humidMax = 280;
+    var tempMin = 0;
+    var tempMax = 50;
+    var lightMin = 0;
+    var lightMax = 300;
 
-        camera = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 1, 100000 );
+    var lastLightValue = 300.0;
+    var lastHumValue = 30.0;
+    var lastTempValue = 10.0;
+
+    document.addEventListener('mousemove', onDocumentMouseMove, false);
+    window.addEventListener('resize', onWindowResize, false);
+
+    init();
+    animate();
+
+    function init() {
+
+        container = document.createElement('div');
+        document.body.appendChild(container);
+
+        // Camera and Scene Setup
+        camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 100000);
         camera.position.z = 3200;
-
         scene = new THREE.Scene();
+
+        // Load background
         scene.background = new THREE.CubeTextureLoader()
-          .setPath( 'textures/' )
-          .load( [ 'px.jpg', 'nx.jpg', 'py.jpg', 'ny.jpg', 'pz.jpg', 'nz.jpg' ] );
+                .setPath('textures/')
+                .load(['px.jpg', 'nx.jpg', 'py.jpg', 'ny.jpg', 'pz.jpg', 'nz.jpg']);
 
-        var geometry = new THREE.SphereBufferGeometry( 100, 32, 16 );
 
+        // Prepare bubbles
         var textureCube = new THREE.CubeTextureLoader()
-          .setPath( 'textures/' )
-          .load( [ 'px.jpg', 'nx.jpg', 'py.jpg', 'ny.jpg', 'pz.jpg', 'nz.jpg' ] );
+                .setPath('textures/')
+                .load(['px.jpg', 'nx.jpg', 'py.jpg', 'ny.jpg', 'pz.jpg', 'nz.jpg']);
 
         textureCube.mapping = THREE.CubeRefractionMapping;
+        bubbleGeometry = new THREE.SphereBufferGeometry(100, 32, 16);
+        bubbleMaterial = new THREE.MeshBasicMaterial({color: 0xffffff, envMap: textureCube, refractionRatio: 0.9});
 
-        var material = new THREE.MeshBasicMaterial( { color: 0xffffff, envMap: textureCube, refractionRatio: 0.9 } );
+        // Create bubbles
+        createNewBubbles(200);
 
-        for ( var i = 0; i < 200; i ++ ) {
-
-          var mesh = new THREE.Mesh( geometry, material );
-          mesh.position.x = Math.random() * 10000 - 5000;
-          mesh.position.y = Math.random() * 10000 - 5000;
-          mesh.position.z = Math.random() * 10000 - 5000;
-
-          mesh.scale.x = mesh.scale.y = mesh.scale.z = Math.random() * 3 + 1;
-          scene.add( mesh );
-          spheres.push( mesh );
-        }
-        
-        // addFire();
-
-
+        // Setup Renderer
         renderer = new THREE.WebGLRenderer({
-                alpha: true,
-                antialias: true
-            });
+            alpha: true,
+            antialias: true
+        });
         renderer.setClearColor(0x000000);
-        renderer.setPixelRatio( window.devicePixelRatio );
-        renderer.setSize( window.innerWidth, window.innerHeight );
-        container.appendChild( renderer.domElement );
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        container.appendChild(renderer.domElement);
 
-
-        window.addEventListener( 'resize', onWindowResize, false );
-
-        //POST PROCESSING
-        //Create Effects Composer
         composer = new THREE.EffectComposer(renderer);
 
-        //Create Shader Passes
-        var renderPass = new THREE.RenderPass( scene, camera );
-        testPass = new THREE.ShaderPass( THREE.TestShader );
+        // Setup for LightTemperatureShader
+        var renderPass = new THREE.RenderPass(scene, camera);
+        shaderPass = new THREE.ShaderPass(THREE.LightTemperatureShader);
 
-        //Add Shader Passes to Composer - order is important
-        composer.addPass( renderPass );
-        composer.addPass( testPass );
+        // Add Shader Passes to Composer - order is important
+        composer.addPass(renderPass);
+        composer.addPass(shaderPass);
 
         //set last pass in composer chain to renderToScreen
-        testPass.renderToScreen = true;
+        shaderPass.renderToScreen = true;
+    }
 
-        onLightChange(200);
-      }
+    function createNewBubbles(count) {
+        for (var i = 0; i < count; i++) {
 
-      function addFire() {
-        var fireTex = new THREE.TextureLoader().load("/textures/firetexture.png");
-        
-        var wireframeMat = new THREE.MeshBasicMaterial({
-            color : new THREE.Color(0xffffff),
-            wireframe : true
-        });
+            var bubble = new THREE.Mesh(bubbleGeometry, bubbleMaterial);
 
-        fire = new THREE.Fire(fireTex);
+            reInitBubble(bubble);
 
-        var wireframe = new THREE.Mesh(fire.geometry, wireframeMat.clone());
-        fire.add(wireframe);
-        wireframe.visible = true;
+            scene.add(bubble);
+            bubbles.push(bubble);
+        }
+    }
 
-        fire.scale.x = fire.scale.y = fire.scale.z = 5;
-        fire.position.y = -5;
+    function reInitBubble(bubble) {
 
-        scene.add(fire);
+        bubble.position.x = Math.random() * 10000 - 5000;
+        bubble.position.y = Math.random() * 10000 - 5000;
+        bubble.position.z = Math.random() * 10000 - 5000;
 
-        // fire.material.uniforms.magnitude.value = controller.magnitude;
-        // fire.material.uniforms.lacunarity.value = controller.lacunarity;
-        // fire.material.uniforms.gain.value = controller.gain;
-        // fire.material.uniforms.noiseScale.value = new THREE.Vector4(
-        //     controller.noiseScaleX,
-        //     controller.noiseScaleY,
-        //     controller.noiseScaleZ,
-        //     0.3
-        // );
-      }
+        bubble.scale.x = bubble.scale.y = bubble.scale.z = Math.random() * 0.1;
+        bubble.lifeTime = 0;
+    }
 
-      function onWindowResize() {
+    function onWindowResize() {
         windowHalfX = window.innerWidth / 2,
-        windowHalfY = window.innerHeight / 2,
-        camera.aspect = window.innerWidth / window.innerHeight;
+                windowHalfY = window.innerHeight / 2,
+                camera.aspect = window.innerWidth / window.innerHeight;
         camera.updateProjectionMatrix();
-        renderer.setSize( window.innerWidth, window.innerHeight );
-      }
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    }
 
-      function onDocumentMouseMove(event) {
-        mouseX = ( event.clientX - windowHalfX ) *10;
-        mouseY = ( event.clientY - windowHalfY ) *10;
-      }
+    function onDocumentMouseMove(event) {
+        mouseX = (event.clientX - windowHalfX) * 10;
+        mouseY = (event.clientY - windowHalfY) * 10;
+    }
 
-      function animate() {
-        requestAnimationFrame( animate );
+    function animate() {
+        requestAnimationFrame(animate);
         render();
-        // fire.update(frameCount);
-        frameCount = frameCount+1;
-      }
+        frameCount = frameCount + 1;
+    }
 
-      function render() {
+    function render() {
         var timer = 0.0001 * Date.now();
 
-        for ( var i = 0, il = spheres.length; i < il; i ++ ) {
+        // Change bubble position and size
+        for (var i = 0; i < bubbles.length; i++) {
 
-          var sphere = spheres[ i ];
-          sphere.position.x = 5000 * Math.cos((timer + i));
-          sphere.position.y = 5000 * Math.sin((timer + i * 1.1));
+            var bubble = bubbles[i];
 
-          // sphere.position.x = fire.position.x;
-          // sphere.position.y = fire.position.y;
+            bubble.position.x = 5000 * Math.cos(timer + i/1.5);
+            bubble.position.y = 5000 * Math.sin(timer + i * 1.1);
 
-          // sphere.position.x += noise.simplex3(frameCount*i, frameCount*i, 100)*30;
-          // sphere.position.y += noise.simplex3(frameCount*20*i, frameCount, 20)*30;
+            // Add jitter depending on temperature
+            bubble.position.x += Math.random() * jitterFactor;
+            bubble.position.y += Math.random() * jitterFactor;
 
-          sphere.position.x += Math.random()*20;
-          sphere.position.y += Math.random()*20;
+            bubble.lifeTime++;
+
+            // Check if bubble should grow or get reinitialized
+            if (bubble.lifeTime < bubbleGrowingTime) {
+
+                bubble.scale.x = bubble.scale.y = bubble.scale.z = bubble.scale.x * 1.04;
+
+            }  else if (bubble.lifeTime > Math.random() * 3500 + 400) {
+                reInitBubble(bubble);
+            } 
         }
-        camera.position.x += ( mouseX - camera.position.x ) * .05;
-        camera.position.y += ( - mouseY - camera.position.y ) * .05;
-        camera.lookAt( scene.position );
-        renderer.render( scene, camera );
+        camera.position.x += (mouseX - camera.position.x) * .05;
+        camera.position.y += (-mouseY - camera.position.y) * .05;
+        camera.lookAt(scene.position);
+
+        renderer.render(scene, camera);
         composer.render();
-      }
+    }
 
-      function onLightChange(value) {
+    function onLightChange(value) {
+        if(!controller.activateDemo){
 
-        var brightness = value / 300 * 1.5;
+            lastLightValue = value;
 
-        //copy gui params into shader uniforms
-        testPass.uniforms["amount"].value = brightness;
-      }
+            // Make sure value stays in range
+            value = Math.min(value, lightMax);
+            value = Math.max(value, lightMin);
 
-      // Register socket
-      var socket = io(window.location.origin); 
-      socket.emit("registered", {});
+            // Leads to values between 0 and 1.5
+            var brightness = (value - lightMin) / (lightMax-lightMin) * 1.5;
 
-      socket.on('updateLight', function (data) {
-          console.log(data);
-          onLightChange(data);
-      });
-    </script>
+            // update shader uniforms
+            shaderPass.uniforms["brightness"].value = brightness;
+        }
+    }
 
-  </body>
+    function onLightChangeDemo() {
+        if(controller.activateDemo){
+
+            var brightness = controller.brightness / 300 * 1.5;
+
+            // update shader uniforms
+            shaderPass.uniforms["brightness"].value = brightness;
+        }
+    }
+
+    function onTemperatureChange(value) {
+        if(!controller.activateDemo){
+
+            lastTempValue = value;
+
+            // Make sure value stays in range
+            value = Math.min(value, tempMax);
+            value = Math.max(value, tempMin);
+
+            // Leads to values between -2 and +3
+            var colorWarmth = (value - tempMin) / (tempMax-tempMin) * 5 - 2;
+
+            // update shader uniforms
+            shaderPass.uniforms["warmth"].value = colorWarmth;
+
+            // update jitter
+            jitterFactor = colorWarmth * 20;
+        }
+    }
+
+    function onTemperatureChangeDemo() {
+        if(controller.activateDemo){
+
+            var colorWarmth = controller.temperature / 50 * 5 - 2;
+
+            // update shader uniforms
+            shaderPass.uniforms["warmth"].value = colorWarmth;
+
+            // update jitter
+            jitterFactor = colorWarmth * 20;
+        }
+    }
+
+    function onHumidityChange(value) {
+        if(!controller.activateDemo){
+
+            lastHumValue = value;
+
+            // Make sure value stays in range
+            value = Math.min(value, humidMax);
+            value = Math.max(value, humidMin);
+
+            // Leads to values between 40 and 120
+            var mappedValue = (value - humidMin) / (humidMax-humidMin) * 80 + 40;
+
+            // Restrict to max bubble size
+            bubbleGrowingTime = mappedValue;
+        }
+    }
+
+    // For direct rel humidity values (for demo)
+    function onHumidityChangeDemo() {
+        if(controller.activateDemo){
+            var mappedValue = controller.humidity / 100 * 80 + 40;
+
+            bubbleGrowingTime = mappedValue;
+        }
+    }
+
+    // Register socket and subscribe sensor changes
+    var socket = io(window.location.origin);
+    socket.emit("registered", {});
+
+    socket.on('updateLight', function (data) {
+        console.log("Light update: " + data);
+        onLightChange(data);
+
+    });
+
+    socket.on('updateTemp', function (data) {
+        console.log("Temperature update: " + data);
+        onTemperatureChange(data);
+    });
+
+    socket.on('updateHumid', function (data) {
+        console.log("Humid update: " + data);
+        onHumidityChange(data);
+    });
+
+    // Dat GUI controller
+    var controller = {
+        temperature  : 10.0,
+        humidity   : 30.0,
+        brightness  : 300.0,
+        activateDemo: false,
+        humidityMin: 50.0,
+        humidityMax: 280.0,
+        temperatureMin: 0.0,
+        temperatureMax: 50.0,
+        lightMin: 0.0,
+        lightMax: 300.0,
+    };
+
+    function onCalibrationChanged(){
+        humidMin = Math.min(controller.humidityMin, controller.humidityMax);
+        humidMax = controller.humidityMax;
+        tempMin = controller.temperatureMin;
+        tempMax = controller.temperatureMax;
+        lightMin = controller.lightMin;
+        lightMax = controller.lightMax;
+
+        onLightChange(lastLightValue);
+        onTemperatureChange(lastTempValue);
+        onHumidityChange(lastHumValue);
+    }
+
+    function onActivateDemo(){
+        if(controller.activateDemo){
+            onLightChangeDemo(controller.brightness);
+            onTemperatureChangeDemo(controller.temperature);
+            onHumidityChangeDemo(controller.humidity);
+        } else {
+            onLightChange(lastLightValue);
+            onTemperatureChange(lastTempValue);
+            onHumidityChange(lastHumValue);
+        }
+    }
+
+    // DAT Gui Setup
+    var gui = new dat.GUI({ autoplace: false, width: 350 });
+
+    var demoFolder = gui.addFolder('Demo');
+    demoFolder.add(controller, "temperature", 0.0, 50.0).step(1.0).name("Temperature (C)").onChange(onTemperatureChangeDemo);
+    demoFolder.add(controller, "humidity", 0.0, 100.0).step(1.0).name("Rel. Humidity").onChange(onHumidityChangeDemo);
+    demoFolder.add(controller, "brightness", 0.0, 300.0).step(10.0).name("Brightness").onChange(onLightChangeDemo);
+    demoFolder.add(controller, "activateDemo").name("Activate Demo (Deactivates Arduino live values)").onChange(onActivateDemo);
+
+    var calibFolder = gui.addFolder('Calibrate Sensors');
+
+    calibFolder.add(controller, "humidityMin").step(0.5).name("Humidity Min Value").onChange(onCalibrationChanged);
+    calibFolder.add(controller, "humidityMax").step(0.5).name("Humidity Max Value").onChange(onCalibrationChanged);
+    calibFolder.add(controller, "temperatureMin").step(0.5).name("Temperature Min Value").onChange(onCalibrationChanged);
+    calibFolder.add(controller, "temperatureMax").step(0.5).name("Temperature Max Value").onChange(onCalibrationChanged);
+    calibFolder.add(controller, "lightMin").step(0.5).name("Light Min Value").onChange(onCalibrationChanged);
+    calibFolder.add(controller, "lightMax").step(0.5).name("Light Max Value").onChange(onCalibrationChanged);
+
+    demoFolder.open();
+
+</script>
+
+</body>
 </html>
