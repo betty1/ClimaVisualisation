@@ -1,3 +1,6 @@
+// flag for Arduino board
+var boardConnected = false;
+
 // Setting up Restify and Socket.io
 var restify = require('restify'),
     socketio = require('socket.io'),
@@ -23,6 +26,10 @@ io.on('connection', function (socket) {
     socket.on('registered', function (data) {
         console.log("Client registered.");
 
+        if(boardConnected){
+            io.emit('boardConnect');
+        }
+
         socket.on('disconnect', function (payload) {
             console.log("Client disconnected.");
         });
@@ -46,6 +53,9 @@ function sensorSetup() {
     board.on("ready", function () {
 
         console.log("Board ready.");
+        io.emit('boardConnect');
+
+        boardConnected = true;
 
         // Humidity
         var humidity = new five.Sensor({
@@ -85,6 +95,14 @@ function sensorSetup() {
 
             io.emit('updateLight', value)
         });
+    });
+
+    board.on("close", function () {
+
+        io.emit('boardDisconnect')
+
+        console.log('Board closed')
+        boardConnected = false;
     });
 }
 

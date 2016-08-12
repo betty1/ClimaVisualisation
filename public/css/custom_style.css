@@ -10,13 +10,42 @@ body {
     background: #333;
     position: absolute;
     top: 0px;
-    width: 400px;
     color: #ffffff;
-    padding: 5px;
+    padding: 10px;
     font-family: Arial;
     font-size: 20px;
     text-align: left;
     z-index: 1000;
+}
+
+#sensor-values {
+    background-color: rgba(100, 100, 100, 0.3);
+    position: absolute;
+    top: 50px;
+    width: 200px;
+    color: #ffffff;
+    padding-left: 10px;
+    font-family: Arial;
+    font-size: 14px;
+    text-align: left;
+    z-index: 1000;
+    font-weight: normal;
+    font-style: normal;
+}
+
+#copyright {
+    background: #333;
+    position: absolute;
+    bottom: 0px;
+    width: 100px;
+    color: #ffffff;
+    padding: 5px;
+    font-family: Arial;
+    font-size: 10px;
+    text-align: left;
+    z-index: 1000;
+    font-weight: normal;
+    font-style: normal;
 }
 
 a {

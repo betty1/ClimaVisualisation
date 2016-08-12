@@ -9,6 +9,15 @@
 
 <body>
 <div id="info">Realtime climate visualization</div>
+<div id="sensor-values">
+<p><span id="connection">Arduino disconnected</span></p>
+
+<p>Temperature: <span id="tempValue">-</span></p>
+<p>Humidity: <span id="humValue">-</span></p>
+<p>Light: <span id="lightValue">-</span></p>
+
+</div>
+<div id="copyright"><a href="mailto:bettyvanaken@gmail.com">Betty van Aken</a>, 2016</div>
 
 <!-- Load libraries -->
 <script src="https://cdn.socket.io/socket.io-1.4.5.js"></script>
@@ -201,6 +210,8 @@
 
             // update shader uniforms
             shaderPass.uniforms["brightness"].value = brightness;
+
+            document.getElementById("lightValue").textContent = Math.round(value) + "";
         }
     }
 
@@ -231,6 +242,8 @@
 
             // update jitter
             jitterFactor = colorWarmth * 20;
+
+            document.getElementById("tempValue").textContent = value + "°C";
         }
     }
 
@@ -261,10 +274,12 @@
 
             // Restrict to max bubble size
             bubbleGrowingTime = mappedValue;
+
+            document.getElementById("humValue").textContent = Math.round(mappedValue) + "%";
+
         }
     }
 
-    // For direct rel humidity values (for demo)
     function onHumidityChangeDemo() {
         if(controller.activateDemo){
             var mappedValue = controller.humidity / 100 * 80 + 40;
@@ -291,6 +306,20 @@
     socket.on('updateHumid', function (data) {
         console.log("Humid update: " + data);
         onHumidityChange(data);
+    });
+
+    socket.on('boardConnect', function () {
+        console.log("Arduino connected");
+        var text = document.getElementById("connection");
+        text.textContent = "Arduino connected";
+        text.style.color = '#00FF00';
+    });
+
+    socket.on('boardDisconnect', function () {
+        console.log("Arduino disconnected");
+        var text = document.getElementById("connection");
+        text.textContent = "Arduino disconnected";
+        text.style.color = '#FF0000';
     });
 
     // Dat GUI controller
